@@ -1,0 +1,54 @@
+# Dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+
+# Native
+android/app/build/
+android/.gradle/
+android/build/
+android/local.properties
+*.jks
+*.keystore
+
+# Metro
+.metro-health-check*
+
+# Debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.swp
+*~
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Environment
+.env
+.env.local
+.env.production
+
+# Logs
+*.log
+
+# Temporary
+*.tmp
+*.temp
+
+# Build outputs
+*.apk
+*.aab
+*.ipa
+
+# Buck
+buck-out/
+\.buckd/
