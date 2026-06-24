@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Modal } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Modal, Dimensions } from 'react-native';
 import { GoGame } from '../game/GoGame';
 import { GoAI } from '../game/GoAI';
 import { GoBoard } from '../components/GoBoard';
@@ -25,6 +25,10 @@ export function GameScreen({ mode, boardSize, aiLevel = 'easy', onBack }: GameSc
   const [moveCount, setMoveCount] = useState(0);
   const [showResignModal, setShowResignModal] = useState(false);
   const [showBackModal, setShowBackModal] = useState(false);
+
+  const { width, height } = Dimensions.get('window');
+  // 应用强制横屏,所以判断宽度是否足够大
+  const isSmallScreen = width < 800;
 
   const updateState = useCallback(() => {
     const game = gameRef.current;
@@ -111,12 +115,12 @@ export function GameScreen({ mode, boardSize, aiLevel = 'easy', onBack }: GameSc
   const modeLabel = mode === 'pvp' ? '双人对弈' : '电脑对手';
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, isSmallScreen && styles.containerSmall]}>
       <TouchableOpacity style={styles.backIcon} onPress={handleBack}>
         <Text style={styles.backIconText}>←</Text>
       </TouchableOpacity>
 
-      <View style={styles.leftPanel}>
+      <View style={[styles.leftPanel, isSmallScreen && styles.leftPanelSmall]}>
         <GoBoard
           board={board}
           boardSize={boardSize}
@@ -126,7 +130,7 @@ export function GameScreen({ mode, boardSize, aiLevel = 'easy', onBack }: GameSc
         />
       </View>
 
-      <View style={styles.rightPanel}>
+      <View style={[styles.rightPanel, isSmallScreen && styles.rightPanelSmall]}>
         <ScrollView contentContainerStyle={styles.rightScroll} showsVerticalScrollIndicator={false}>
           <View style={styles.infoCard}>
             <Text style={styles.modeLabel}>{modeLabel}</Text>
@@ -222,38 +226,54 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     backgroundColor: '#F5E6D3',
-    alignItems: 'stretch',
-    paddingLeft: 8,
-    paddingRight: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: '5%',
+  },
+  containerSmall: {
+    flexDirection: 'column',
+    paddingHorizontal: 16,
+    paddingTop: 8,
   },
   backIcon: {
     position: 'absolute',
-    top: 10,
-    left: 10,
+    top: '1.5%',
+    left: '1.5%',
     zIndex: 10,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: 'rgba(93,58,26,0.15)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   backIconText: {
-    fontSize: 22,
+    fontSize: 26,
     color: '#5D3A1A',
     fontWeight: 'bold',
   },
   leftPanel: {
-    flex: 1,
+    flex: 1.1,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingRight: '3%',
+  },
+  leftPanelSmall: {
+    flex: 0,
+    marginTop: 56,
+    paddingRight: 0,
   },
   rightPanel: {
-    width: 200,
+    width: '20%',
+    minWidth: 160,
+    maxWidth: 240,
     paddingVertical: 8,
-    paddingLeft: 10,
-    paddingRight: 16,
     justifyContent: 'center',
+  },
+  rightPanelSmall: {
+    width: '100%',
+    paddingVertical: 12,
+    marginTop: 12,
   },
   rightScroll: {
     alignItems: 'center',
@@ -264,20 +284,20 @@ const styles = StyleSheet.create({
   infoCard: {
     backgroundColor: '#FFF8EE',
     borderRadius: 8,
-    paddingVertical: 6,
+    paddingVertical: 8,
     paddingHorizontal: 12,
     alignItems: 'center',
     width: '100%',
   },
   modeLabel: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#5D3A1A',
   },
   boardSizeLabel: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#8B6914',
-    marginTop: 1,
+    marginTop: 2,
   },
   turnContainer: {
     width: '100%',
@@ -286,84 +306,84 @@ const styles = StyleSheet.create({
   turnIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 6,
+    paddingVertical: 8,
     paddingHorizontal: 12,
     backgroundColor: '#FFF8EE',
     borderRadius: 6,
     width: '100%',
   },
   turnText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
-    marginLeft: 6,
+    marginLeft: 8,
     color: '#5D3A1A',
   },
   turnDot: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
     borderWidth: 1,
   },
   capturesContainer: {
     backgroundColor: '#FFF8EE',
     borderRadius: 8,
-    padding: 8,
+    padding: 10,
     width: '100%',
   },
   captureRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: 6,
   },
   captureStone: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    marginRight: 6,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    marginRight: 8,
   },
   captureLabel: {
-    fontSize: 13,
+    fontSize: 14,
     color: '#5D3A1A',
   },
   moveCount: {
-    fontSize: 11,
+    fontSize: 12,
     color: '#8B6914',
     textAlign: 'center',
-    marginTop: 4,
+    marginTop: 6,
   },
   scoreContainer: {
     backgroundColor: '#FFF8EE',
     borderRadius: 8,
-    padding: 10,
+    padding: 12,
     width: '100%',
     alignItems: 'center',
   },
   scoreTitle: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    color: '#5D3A1A',
-    marginBottom: 4,
-  },
-  scoreText: {
-    fontSize: 13,
-    color: '#5D3A1A',
-    marginBottom: 1,
-  },
-  winnerText: {
     fontSize: 16,
     fontWeight: 'bold',
+    color: '#5D3A1A',
+    marginBottom: 6,
+  },
+  scoreText: {
+    fontSize: 14,
+    color: '#5D3A1A',
+    marginBottom: 2,
+  },
+  winnerText: {
+    fontSize: 17,
+    fontWeight: 'bold',
     color: '#D32F2F',
-    marginTop: 4,
+    marginTop: 6,
   },
   buttonRow: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 10,
     width: '100%',
     justifyContent: 'center',
   },
   actionButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 24,
+    paddingVertical: 12,
+    paddingHorizontal: 28,
     borderRadius: 20,
     alignItems: 'center',
   },

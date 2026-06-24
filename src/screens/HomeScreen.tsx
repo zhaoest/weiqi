@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
 import { GameMode, BoardSize, AILevel } from '../game/types';
 
 interface HomeScreenProps {
@@ -10,6 +10,10 @@ export function HomeScreen({ onStartGame }: HomeScreenProps) {
   const [selectedSize, setSelectedSize] = useState<BoardSize>(9);
   const [selectedMode, setSelectedMode] = useState<GameMode>('pve');
   const [selectedAILevel] = useState<AILevel>('medium');
+
+  const { width, height } = Dimensions.get('window');
+  // 应用强制横屏,判断宽度
+  const isSmallScreen = width < 800;
 
   const sizes: { value: BoardSize; label: string; desc: string }[] = [
     { value: 9, label: '9×9', desc: '初学者推荐' },
@@ -22,22 +26,22 @@ export function HomeScreen({ onStartGame }: HomeScreenProps) {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, isSmallScreen && styles.containerSmall]}>
       <View style={styles.titleArea}>
-        <Text style={styles.title}>暖暖围棋</Text>
-        <Text style={styles.motto}>每一步都是成长</Text>
+        <Text style={[styles.title, isSmallScreen && styles.titleSmall]}>暖暖围棋</Text>
+        <Text style={[styles.motto, isSmallScreen && styles.mottoSmall]}>每一步都是成长</Text>
       </View>
 
-      <View style={styles.mainRow}>
-        <View style={styles.leftCol}>
-          <Text style={styles.sectionTitle}>棋盘大小</Text>
-          <View style={styles.sizeRow}>
+      <View style={[styles.mainRow, isSmallScreen && styles.mainRowSmall]}>
+        <View style={[styles.leftCol, isSmallScreen && styles.leftColSmall]}>
+          <Text style={[styles.sectionTitle, isSmallScreen && styles.sectionTitleSmall]}>棋盘大小</Text>
+          <View style={[styles.sizeRow, isSmallScreen && styles.sizeRowSmall]}>
             {sizes.map(s => {
               const active = selectedSize === s.value;
               return (
                 <TouchableOpacity
                   key={s.value}
-                  style={[styles.sizeButton, active && styles.sizeButtonActive]}
+                  style={[styles.sizeButton, active && styles.sizeButtonActive, isSmallScreen && styles.sizeButtonSmall]}
                   onPress={() => setSelectedSize(s.value)}
                 >
                   <Text style={[styles.sizeButtonText, active && styles.sizeButtonTextActive]}>{s.label}</Text>
@@ -48,13 +52,13 @@ export function HomeScreen({ onStartGame }: HomeScreenProps) {
           </View>
         </View>
 
-        <View style={styles.divider} />
+        {!isSmallScreen && <View style={styles.divider} />}
 
-        <View style={styles.rightCol}>
-          <Text style={styles.sectionTitle}>游戏模式</Text>
-          <View style={styles.modeRow}>
+        <View style={[styles.rightCol, isSmallScreen && styles.rightColSmall]}>
+          <Text style={[styles.sectionTitle, isSmallScreen && styles.sectionTitleSmall]}>游戏模式</Text>
+          <View style={[styles.modeRow, isSmallScreen && styles.modeRowSmall]}>
             <TouchableOpacity
-              style={[styles.modeButton, selectedMode === 'pve' ? styles.pveActive : styles.modeInactive]}
+              style={[styles.modeButton, selectedMode === 'pve' ? styles.pveActive : styles.modeInactive, isSmallScreen && styles.modeButtonSmall]}
               onPress={() => setSelectedMode('pve')}
             >
               <Text style={[styles.modeTitle, selectedMode !== 'pve' && styles.modeTitleInactive]}>电脑对手</Text>
@@ -62,7 +66,7 @@ export function HomeScreen({ onStartGame }: HomeScreenProps) {
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.modeButton, selectedMode === 'pvp' ? styles.pvpActive : styles.modeInactive]}
+              style={[styles.modeButton, selectedMode === 'pvp' ? styles.pvpActive : styles.modeInactive, isSmallScreen && styles.modeButtonSmall]}
               onPress={() => setSelectedMode('pvp')}
             >
               <Text style={[styles.modeTitle, selectedMode !== 'pvp' && styles.modeTitleInactive]}>双人对弈</Text>
@@ -73,8 +77,8 @@ export function HomeScreen({ onStartGame }: HomeScreenProps) {
       </View>
 
       <View style={styles.bottomRow}>
-        <TouchableOpacity style={styles.startButton} onPress={handleStart}>
-          <Text style={styles.startButtonText}>开始</Text>
+        <TouchableOpacity style={[styles.startButton, isSmallScreen && styles.startButtonSmall]} onPress={handleStart}>
+          <Text style={[styles.startButtonText, isSmallScreen && styles.startButtonTextSmall]}>开始</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -85,18 +89,26 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F5E6D3',
-    paddingHorizontal: 24,
-    paddingTop: 16,
-    paddingBottom: 20,
+    paddingHorizontal: '5%',
+    paddingTop: 20,
+    paddingBottom: 24,
+  },
+  containerSmall: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 16,
   },
   titleArea: {
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 16,
   },
   title: {
     fontSize: 32,
     fontWeight: 'bold',
     color: '#5D3A1A',
+  },
+  titleSmall: {
+    fontSize: 28,
   },
   motto: {
     fontSize: 13,
@@ -104,16 +116,27 @@ const styles = StyleSheet.create({
     marginTop: 4,
     letterSpacing: 2,
   },
+  mottoSmall: {
+    fontSize: 12,
+    marginTop: 2,
+  },
   mainRow: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
   },
+  mainRowSmall: {
+    flexDirection: 'column',
+    gap: 12,
+  },
   leftCol: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  leftColSmall: {
+    width: '100%',
   },
   divider: {
     width: 2,
@@ -126,15 +149,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  rightColSmall: {
+    width: '100%',
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '600',
     color: '#5D3A1A',
     marginBottom: 12,
   },
+  sectionTitleSmall: {
+    fontSize: 16,
+    marginBottom: 8,
+  },
   sizeRow: {
     flexDirection: 'row',
     gap: 10,
+  },
+  sizeRowSmall: {
+    gap: 8,
   },
   sizeButton: {
     backgroundColor: '#FFF8EE',
@@ -146,6 +179,11 @@ const styles = StyleSheet.create({
     borderColor: '#D4A574',
     minWidth: 80,
     opacity: 0.6,
+  },
+  sizeButtonSmall: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    minWidth: 70,
   },
   sizeButtonActive: {
     borderColor: '#8B4513',
@@ -172,6 +210,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
   },
+  modeRowSmall: {
+    gap: 8,
+  },
   modeButton: {
     borderRadius: 12,
     paddingVertical: 16,
@@ -179,6 +220,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     minWidth: 130,
     borderWidth: 3,
+  },
+  modeButtonSmall: {
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    minWidth: 110,
   },
   pvpActive: {
     backgroundColor: '#E8F5E9',
@@ -213,17 +259,24 @@ const styles = StyleSheet.create({
   },
   bottomRow: {
     alignItems: 'center',
-    paddingTop: 12,
+    paddingTop: 16,
   },
   startButton: {
     backgroundColor: '#8B4513',
-    paddingVertical: 14,
-    paddingHorizontal: 60,
+    paddingVertical: 16,
+    paddingHorizontal: 64,
     borderRadius: 30,
+  },
+  startButtonSmall: {
+    paddingVertical: 12,
+    paddingHorizontal: 48,
   },
   startButtonText: {
     color: '#fff',
     fontSize: 20,
     fontWeight: 'bold',
+  },
+  startButtonTextSmall: {
+    fontSize: 18,
   },
 });

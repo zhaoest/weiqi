@@ -32,8 +32,18 @@ const STAR_POINTS: Record<BoardSize, Position[]> = {
 export function GoBoard({ board, boardSize, lastMove, onPress, disabled }: GoBoardProps) {
   const cellSize = useMemo(() => {
     const { width, height } = Dimensions.get('window');
-    const maxSize = Math.min(width * 0.75, height * 0.94);
-    return Math.floor(maxSize / (boardSize + 0.3));
+    const isSmallScreen = width < 800;
+    
+    // 棋盘应该保持正方形
+    // 大屏幕: 棋盘占可用空间的 58%
+    // 小屏幕: 棋盘占可用空间的 65%
+    const availableWidth = isSmallScreen ? width * 0.65 : width * 0.54;
+    const availableHeight = height * 0.88;
+    
+    // 取较小的值确保棋盘是正方形
+    const maxSize = Math.min(availableWidth, availableHeight);
+    
+    return Math.floor(maxSize / (boardSize - 1 + 1.4));
   }, [boardSize]);
 
   const padding = Math.floor(cellSize * 0.7);
