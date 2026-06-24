@@ -1,9 +1,10 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Modal, Dimensions } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Modal, Dimensions, Animated } from 'react-native';
 import { GoGame } from '../game/GoGame';
 import { GoAI } from '../game/GoAI';
 import { GoBoard } from '../components/GoBoard';
 import { GameMode, BoardSize, AILevel, Position } from '../game/types';
+import type { MoveRejectReason } from '../game/GoGame';
 
 interface GameScreenProps {
   mode: GameMode;
@@ -14,7 +15,7 @@ interface GameScreenProps {
 
 export function GameScreen({ mode, boardSize, aiLevel = 'easy', onBack }: GameScreenProps) {
   const gameRef = useRef(new GoGame(boardSize));
-  const aiRef = useRef(new GoAI(aiLevel));
+  const aiRef = useRef(new GoAI());
   const [board, setBoard] = useState(gameRef.current.state.board);
   const [currentPlayer, setCurrentPlayer] = useState(gameRef.current.state.currentPlayer);
   const [captures, setCaptures] = useState(gameRef.current.state.captures);
@@ -26,9 +27,35 @@ export function GameScreen({ mode, boardSize, aiLevel = 'easy', onBack }: GameSc
   const [showResignModal, setShowResignModal] = useState(false);
   const [showBackModal, setShowBackModal] = useState(false);
 
+  // Toast 状态
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const toastOpacity = useRef(new Animated.Value(0)).current;
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = useCallback((msg: string) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToastMessage(msg);
+    setToastVisible(true);
+    Animated.sequence([
+      Animated.timing(toastOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+      Animated.delay(1800),
+      Animated.timing(toastOpacity, { toValue: 0, duration: 300, useNativeDriver: true }),
+    ]).start(() => setToastVisible(false));
+    toastTimer.current = setTimeout(() => {}, 2500);
+  }, [toastOpacity]);
+
+  const rejectMessages: Record<MoveRejectReason, string> = {
+    occupied: '这里已经有棋子了，换个地方吧',
+    ko: '打劫！不能马上提回来，先下别处',
+    suicide: '不能自杀！落子后没有气，会被提掉',
+    game_over: '游戏已经结束了',
+    out_of_bounds: '超出棋盘范围了',
+  };
+
   const { width, height } = Dimensions.get('window');
   // 应用强制横屏,所以判断宽度是否足够大
-  const isSmallScreen = width < 800;
+  const isSmallScreen = width < 600;
 
   const updateState = useCallback(() => {
     const game = gameRef.current;
@@ -69,12 +96,14 @@ export function GameScreen({ mode, boardSize, aiLevel = 'easy', onBack }: GameSc
     if (mode === 'pve' && currentPlayer === 'white') return;
 
     const game = gameRef.current;
-    const success = game.playMove(pos);
-    if (success) {
+    const result = game.playMove(pos);
+    if (result.success) {
       setMoveCount(prev => prev + 1);
       updateState();
+    } else {
+      showToast(rejectMessages[result.reason]);
     }
-  }, [gameOver, isAIThinking, mode, currentPlayer, updateState]);
+  }, [gameOver, isAIThinking, mode, currentPlayer, updateState, showToast, rejectMessages]);
 
   const handlePass = useCallback(() => {
     if (gameOver || isAIThinking) return;
@@ -217,6 +246,13 @@ export function GameScreen({ mode, boardSize, aiLevel = 'easy', onBack }: GameSc
           </View>
         </View>
       </Modal>
+
+      {/* Toast 提示 */}
+      {toastVisible && (
+        <Animated.View style={[styles.toast, { opacity: toastOpacity }]}>
+          <Text style={styles.toastText}>{toastMessage}</Text>
+        </Animated.View>
+      )}
     </View>
   );
 }
@@ -450,5 +486,30 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#fff',
     fontWeight: '600',
+  },
+  toast: {
+    position: 'absolute',
+    bottom: '8%',
+    left: '50%',
+    transform: [{ translateX: -140 }],
+    backgroundColor: 'rgba(60,30,10,0.88)',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    width: 280,
+    alignItems: 'center',
+    zIndex: 100,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+  },
+  toastText: {
+    color: '#FFF5E0',
+    fontSize: 15,
+    fontWeight: '600',
+    textAlign: 'center',
+    lineHeight: 22,
   },
 });

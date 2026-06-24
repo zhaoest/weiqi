@@ -13,7 +13,7 @@ export function HomeScreen({ onStartGame }: HomeScreenProps) {
 
   const { width, height } = Dimensions.get('window');
   // 应用强制横屏,判断宽度
-  const isSmallScreen = width < 800;
+  const isSmallScreen = width < 650;
 
   const sizes: { value: BoardSize; label: string; desc: string }[] = [
     { value: 9, label: '9×9', desc: '初学者推荐' },
@@ -171,19 +171,19 @@ const styles = StyleSheet.create({
   },
   sizeButton: {
     backgroundColor: '#FFF8EE',
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 10,
     alignItems: 'center',
-    borderWidth: 2,
+    borderWidth: 3,
     borderColor: '#D4A574',
-    minWidth: 80,
+    minWidth: 90,
     opacity: 0.6,
   },
   sizeButtonSmall: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    minWidth: 70,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    minWidth: 75,
   },
   sizeButtonActive: {
     borderColor: '#8B4513',
