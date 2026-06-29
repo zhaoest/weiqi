@@ -1,404 +1,675 @@
 import { GoGame } from './GoGame';
-import { Position } from './types';
+import { Position, AILevel } from './types';
 
 type StoneColor = 'black' | 'white';
 
 /**
- * 陪孩子下棋的入门级 AI
+ * 少儿围棋陪练 AI — 扭十字教法专用
  * 
  * 设计理念:
- * - 防守第一,先保住自己的棋
- * - 只吃明显的死子,不做复杂追击
- * - 给孩子学习机会,不下太凶的棋
- * - 按照入门教学的基本棋理
- * - 棋形稳健,避免下出"狗屎棋"
+ * - 棋盘已预置扭十字（两黑两白交叉）
+ * - 防守第一：积极救棋、连接、预判威胁
+ * - 进攻适中：吃死子、收气压迫，但不深入追杀
+ * - 配合教学：紧跟孩子走法，在不远离十字的区域缠斗
  */
 export class GoAI {
-  // 随机种子,控制"让棋"概率
-  private randomThreshold = 0.12;
+  private level: AILevel;
+
+  constructor(level: AILevel = 'medium') {
+    this.level = level;
+  }
 
   getMove(game: GoGame): Position | null {
     const validMoves = game.getValidMoves();
     if (validMoves.length === 0) return null;
 
-    const moveCount = game.state.history.length;
-    
-    // 开局阶段 - 优先占角
-    if (moveCount < 6) {
-      const opening = this.getOpeningMove(game, validMoves);
-      if (opening) return opening;
-    }
-
-    // 第一优先级: 救自己的棋 (防守)
-    const save = this.findSaveMove(game, validMoves);
+    // === 第一优先级：紧急救棋 (1口气) ===
+    const save = this.findEmergencySave(game, validMoves);
     if (save) return save;
 
-    // 第二优先级: 吃掉明显的死子 (稳健进攻)
-    const capture = this.findSimpleCapture(game, validMoves);
+    // === 第二优先级：救2口气的弱棋 ===
+    const save2 = this.findSave2Liberty(game, validMoves);
+    if (save2) return save2;
+
+    // === 第三优先级：吃掉对方死子 ===
+    const capture = this.findCapture(game, validMoves);
     if (capture) return capture;
 
-    // 第三优先级: 防守自己危险的棋 (预防性防守)
-    const defend = this.findDefensiveMove(game, validMoves);
+    // === 第四优先级：压迫对方弱棋（进攻性防守） ===
+    const pressure = this.findPressureMove(game, validMoves);
+    if (pressure) return pressure;
+
+    // === 第五优先级：防守保护 + 连接 + 好形 ===
+    const defend = this.findDefenseMove(game, validMoves);
     if (defend) return defend;
 
-    // 第四优先级: 下出稳健的好棋 (不给孩子太大压力)
-    const safe = this.getSafeMove(game, validMoves);
-    if (safe) return safe;
+    // === 第六优先级：战略走棋 ===
+    const strategy = this.findStrategyMove(game, validMoves);
+    if (strategy) return strategy;
 
-    // 最后: 随机选择 (给机会)
-    return this.getRandomMove(game, validMoves);
+    // === 兜底 ===
+    return this.getSafeFallback(game, validMoves);
   }
 
-  /**
-   * 开局占角
-   * 入门教学: 先占角,再建边
-   */
-  private getOpeningMove(game: GoGame, validMoves: Position[]): Position | null {
-    const size = game.size;
-    const board = game.state.board;
-
-    // 角部优先点
-    const cornerPoints: Position[] = size === 9
-      ? [
-          // 星位 (角部中心)
-          { row: 2, col: 2 }, { row: 2, col: 6 },
-          { row: 6, col: 2 }, { row: 6, col: 6 },
-          // 三三 (角部角落)
-          { row: 1, col: 1 }, { row: 1, col: 7 },
-          { row: 7, col: 1 }, { row: 7, col: 7 },
-          // 小目的邻位
-          { row: 2, col: 1 }, { row: 2, col: 7 },
-          { row: 6, col: 1 }, { row: 6, col: 7 },
-          { row: 1, col: 2 }, { row: 1, col: 6 },
-          { row: 7, col: 2 }, { row: 7, col: 6 },
-        ]
-      : [
-          // 13×13 和 19×19 的星位和三三
-          { row: 3, col: 3 }, { row: 3, col: size - 4 },
-          { row: size - 4, col: 3 }, { row: size - 4, col: size - 4 },
-          { row: 2, col: 2 }, { row: 2, col: size - 3 },
-          { row: size - 3, col: 2 }, { row: size - 3, col: size - 3 },
-        ];
-
-    // 按优先级选择
-    for (const pt of cornerPoints) {
-      if (pt.row < size && pt.col < size && board[pt.row][pt.col] === null) {
-        const isValid = validMoves.some(m => m.row === pt.row && m.col === pt.col);
-        if (isValid) return pt;
-      }
-    }
-
-    return null;
-  }
+  // ============================================================
+  //  紧急救棋 (1口气)
+  // ============================================================
 
   /**
-   * 救自己的棋
-   * 入门教学: 先保住自己的棋,别被吃掉
+   * 救只剩1口气的己方棋（最高优先级）
+   * 优先救大棋，优先救后气多
    */
-  private findSaveMove(game: GoGame, validMoves: Position[]): Position | null {
+  private findEmergencySave(game: GoGame, validMoves: Position[]): Position | null {
     const color = game.state.currentPlayer;
     const board = game.state.board;
 
-    // 1. 救只剩1口气的棋 (紧急!)
+    let bestSave: { move: Position; stoneCount: number; newLiberties: number } | null = null;
+
     for (const move of validMoves) {
       for (const neighbor of game.getNeighbors(move)) {
         if (board[neighbor.row][neighbor.col] === color) {
           const group = game.getGroup(neighbor);
           if (group.liberties.size === 1) {
-            // 模拟落子后,这颗棋至少有2口气
             const tempGame = game.clone();
             tempGame.state.board[move.row][move.col] = color;
             const newGroup = tempGame.getGroup(move);
             if (newGroup.liberties.size >= 2) {
-              return move;
-            }
-          }
-        }
-      }
-    }
-
-    // 2. 救只剩2口气的大龙 (优先救子多的)
-    let bestEscape: { move: Position; stoneCount: number; gain: number } | null = null;
-    for (const move of validMoves) {
-      for (const neighbor of game.getNeighbors(move)) {
-        if (board[neighbor.row][neighbor.col] === color) {
-          const group = game.getGroup(neighbor);
-          if (group.liberties.size === 2) {
-            const tempGame = game.clone();
-            tempGame.state.board[move.row][move.col] = color;
-            const newGroup = tempGame.getGroup(move);
-            // 落子后至少要有4口气才算好棋
-            if (newGroup.liberties.size >= 4) {
-              const gain = newGroup.liberties.size - group.liberties.size;
-              const stoneCount = group.stones.length;
-              if (!bestEscape || 
-                  stoneCount > bestEscape.stoneCount || 
-                  (stoneCount === bestEscape.stoneCount && gain > bestEscape.gain)) {
-                bestEscape = { move, stoneCount, gain };
+              if (!bestSave || 
+                  group.stones.length > bestSave.stoneCount || 
+                  (group.stones.length === bestSave.stoneCount && newGroup.liberties.size > bestSave.newLiberties)) {
+                bestSave = { move, stoneCount: group.stones.length, newLiberties: newGroup.liberties.size };
               }
             }
           }
         }
       }
     }
-    if (bestEscape) return bestEscape.move;
 
-    // 3. 救只剩2口气但扩气效果一般的棋 (降低优先级,可能让孩子吃掉)
-    let weakEscape: { move: Position; stoneCount: number } | null = null;
-    for (const move of validMoves) {
-      for (const neighbor of game.getNeighbors(move)) {
-        if (board[neighbor.row][neighbor.col] === color) {
-          const group = game.getGroup(neighbor);
-          if (group.liberties.size === 2) {
-            const tempGame = game.clone();
-            tempGame.state.board[move.row][move.col] = color;
-            const newGroup = tempGame.getGroup(move);
-            // 扩到3口气也算可以
-            if (newGroup.liberties.size >= 3) {
-              if (!weakEscape || group.stones.length > weakEscape.stoneCount) {
-                weakEscape = { move, stoneCount: group.stones.length };
-              }
-            }
-          }
-        }
-      }
-    }
-    // 只有棋子数>=3时才救,否则让孩子有机会吃
-    if (weakEscape && weakEscape.stoneCount >= 3) {
-      return weakEscape.move;
-    }
-
-    return null;
+    return bestSave?.move ?? null;
   }
 
   /**
-   * 吃掉明显的死子
-   * 入门教学: 吃棋的时候要数清楚气
+   * 救只剩2口气的己方弱棋
+   * 更激进：只要救完后气>=3就救，不管子数
    */
-  private findSimpleCapture(game: GoGame, validMoves: Position[]): Position | null {
+  private findSave2Liberty(game: GoGame, validMoves: Position[]): Position | null {
     const color = game.state.currentPlayer;
-    const opponent = color === 'black' ? 'white' : 'black';
     const board = game.state.board;
 
-    // 只吃只剩1口气的棋 (最明显的死子)
+    const candidates: { move: Position; stoneCount: number; newLiberties: number; isAtari: boolean }[] = [];
+
+    for (const move of validMoves) {
+      for (const neighbor of game.getNeighbors(move)) {
+        if (board[neighbor.row][neighbor.col] === color) {
+          const group = game.getGroup(neighbor);
+          if (group.liberties.size === 2) {
+            // 检查如果对手下一步走另一口气会不会打吃我们
+            const otherLibs = Array.from(group.liberties);
+            const wouldBeAtari = otherLibs.some(lib => {
+              const [lr, lc] = lib.split(',').map(Number);
+              if (lr === move.row && lc === move.col) return false;
+              const tempGame = game.clone();
+              const opponent = color === 'black' ? 'white' : 'black';
+              tempGame.state.board[lr][lc] = opponent;
+              const gAfter = tempGame.getGroup(group.stones[0]);
+              return gAfter.liberties.size <= 1;
+            });
+
+            const tempGame = game.clone();
+            tempGame.state.board[move.row][move.col] = color;
+            const newGroup = tempGame.getGroup(move);
+            if (newGroup.liberties.size >= 3) {
+              candidates.push({
+                move,
+                stoneCount: group.stones.length,
+                newLiberties: newGroup.liberties.size,
+                isAtari: wouldBeAtari,
+              });
+            }
+          }
+        }
+      }
+    }
+
+    if (candidates.length === 0) return null;
+
+    // 排序：优先救对手可以直接打吃的 > 子多的 > 气多的
+    candidates.sort((a, b) => {
+      if (a.isAtari !== b.isAtari) return a.isAtari ? -1 : 1;
+      if (b.stoneCount !== a.stoneCount) return b.stoneCount - a.stoneCount;
+      return b.newLiberties - a.newLiberties;
+    });
+
+    return candidates[0].move;
+  }
+
+  // ============================================================
+  //  吃棋（适度进攻）
+  // ============================================================
+
+  /**
+   * 吃掉对方死子
+   * 优先吃大棋、吃后自己安全
+   */
+  private findCapture(game: GoGame, validMoves: Position[]): Position | null {
+    const color = game.state.currentPlayer;
+    const opponent: StoneColor = color === 'black' ? 'white' : 'black';
+    const board = game.state.board;
+
+    const captures: { move: Position; captureCount: number; myLiberties: number }[] = [];
+
     for (const move of validMoves) {
       for (const neighbor of game.getNeighbors(move)) {
         if (board[neighbor.row][neighbor.col] === opponent) {
           const group = game.getGroup(neighbor);
-          // 只打1口气的棋
           if (group.liberties.size === 1) {
-            // 落子后自己能活
             const tempGame = game.clone();
             tempGame.state.board[move.row][move.col] = color;
             const myGroup = tempGame.getGroup(move);
             if (myGroup.liberties.size >= 2) {
-              return move;
+              captures.push({
+                move,
+                captureCount: group.stones.length,
+                myLiberties: myGroup.liberties.size,
+              });
+              break;
             }
           }
         }
       }
     }
 
-    // 不做追击! 入门阶段不教孩子"追杀"的概念
-    return null;
+    if (captures.length === 0) return null;
+
+    captures.sort((a, b) => {
+      if (b.captureCount !== a.captureCount) return b.captureCount - a.captureCount;
+      return b.myLiberties - a.myLiberties;
+    });
+
+    return captures[0].move;
   }
 
   /**
-   * 预防性防守
-   * 入门教学: 要看到对手下一步能吃掉自己的棋
+   * 压迫对方弱棋：收对方2气子的气，迫使对方防守
+   * 这是进攻性防守，不直接吃子但施加压力
    */
-  private findDefensiveMove(game: GoGame, validMoves: Position[]): Position | null {
+  private findPressureMove(game: GoGame, validMoves: Position[]): Position | null {
     const color = game.state.currentPlayer;
-    const opponent = color === 'black' ? 'white' : 'black';
+    const opponent: StoneColor = color === 'black' ? 'white' : 'black';
     const board = game.state.board;
 
-    // 找到自己所有有危险的棋
-    const dangerGroups: { group: { stones: Position[]; liberties: Set<string> }; move: Position }[] = [];
+    const pressures: { move: Position; targetSize: number; myLiberties: number }[] = [];
 
-    for (let r = 0; r < game.size; r++) {
-      for (let c = 0; c < game.size; c++) {
-        if (board[r][c] === color) {
-          const group = game.getGroup({ row: r, col: c });
-          // 3口气以下算危险
-          if (group.liberties.size <= 3) {
-            // 检查是否能被一步吃掉
-            for (const libKey of group.liberties) {
-              const [lr, lc] = libKey.split(',').map(Number);
-              const libPos = { row: lr, col: lc };
-              const isValid = validMoves.some(m => m.row === lr && m.col === lc);
-              if (isValid) {
-                // 模拟对手在这里落子
-                const tempGame = game.clone();
-                tempGame.state.board[lr][lc] = opponent;
-                // 重新计算这个棋子的气
-                let canCapture = true;
-                for (const stone of group.stones) {
-                  const sGroup = tempGame.getGroup(stone);
-                  if (sGroup.liberties.size > 0) {
-                    canCapture = false;
-                    break;
-                  }
-                }
-                if (canCapture) {
-                  dangerGroups.push({ group, move: libPos });
-                  break;
-                }
-              }
+    for (const move of validMoves) {
+      for (const neighbor of game.getNeighbors(move)) {
+        if (board[neighbor.row][neighbor.col] === opponent) {
+          const group = game.getGroup(neighbor);
+          // 对方2-3口气的棋子，我们收它一口气
+          if (group.liberties.size >= 2 && group.liberties.size <= 3) {
+            const tempGame = game.clone();
+            tempGame.state.board[move.row][move.col] = color;
+            const myGroup = tempGame.getGroup(move);
+            // 自己必须安全
+            if (myGroup.liberties.size >= 3) {
+              pressures.push({
+                move,
+                targetSize: group.stones.length,
+                myLiberties: myGroup.liberties.size,
+              });
+              break;
             }
           }
         }
       }
     }
 
-    if (dangerGroups.length === 0) return null;
+    if (pressures.length === 0) return null;
 
-    // 选择最好的防守位置: 优先救大龙
-    dangerGroups.sort((a, b) => b.group.stones.length - a.group.stones.length);
-    const bestDefense = dangerGroups[0];
+    pressures.sort((a, b) => {
+      if (b.targetSize !== a.targetSize) return b.targetSize - a.targetSize;
+      return b.myLiberties - a.myLiberties;
+    });
 
-    // 模拟落子后自己是否能活
-    const tempGame = game.clone();
-    tempGame.state.board[bestDefense.move.row][bestDefense.move.col] = color;
-    const newGroup = tempGame.getGroup(bestDefense.move);
-    if (newGroup.liberties.size >= 2) {
-      return bestDefense.move;
-    }
-
-    return null;
+    return pressures[0].move;
   }
 
+  // ============================================================
+  //  防守保护
+  // ============================================================
+
   /**
-   * 下出稳健的好棋
-   * 入门教学: 连接自己的棋,拆边扩张地盘
+   * 综合防守评估：预防威胁 + 连接弱棋 + 好形 + 做眼
    */
-  private getSafeMove(game: GoGame, validMoves: Position[]): Position | null {
+  private findDefenseMove(game: GoGame, validMoves: Position[]): Position | null {
     const color = game.state.currentPlayer;
-    const board = game.state.board;
-    const size = game.size;
-    const moveCount = game.state.history.length;
 
-    // 评估每个落点
-    const scored = validMoves.map(move => {
-      let score = 0;
+    const scored: { move: Position; score: number }[] = [];
 
-      // 1. 基础分: 增加自己的气
+    for (const move of validMoves) {
       const tempGame = game.clone();
       tempGame.state.board[move.row][move.col] = color;
       const myGroup = tempGame.getGroup(move);
-      const myLiberties = myGroup.liberties.size;
-      
-      // 气太少不要下
-      if (myLiberties <= 1) return { move, score: -1000 };
-      score += myLiberties * 10;
 
-      // 2. 连接己方棋 (入门基础: 不要被断开)
-      let friendlyCount = 0;
-      for (const neighbor of game.getNeighbors(move)) {
-        if (board[neighbor.row][neighbor.col] === color) {
-          friendlyCount++;
-          const ng = game.getGroup(neighbor);
-          // 连接后让对方的棋气变少
-          if (ng.liberties.size <= 2) {
-            score += 8;
+      if (myGroup.liberties.size <= 1) continue;
+
+      let score = 0;
+
+      // 1. 救2-3口气的弱棋
+      score += this.scoreSaveWeakGroups(game, move, color);
+
+      // 2. 预防对手紧气威胁（增强权重）
+      score += this.scoreThreatPrevention(game, move, color);
+
+      // 3. 连接己方棋
+      score += this.scoreConnection(game, move, color);
+
+      // 4. 好形
+      score += this.scoreShape(game, move, color);
+
+      // 5. 做眼空间
+      score += this.scoreEyeSpace(game, move, color);
+
+      // 6. 扩展气（防守时气越多越好）
+      if (myGroup.liberties.size >= 4) score += 2;
+      if (myGroup.liberties.size >= 5) score += 2;
+
+      scored.push({ move, score });
+    }
+
+    if (scored.length === 0) return null;
+
+    scored.sort((a, b) => b.score - a.score);
+    if (scored[0].score >= 5) {
+      return scored[0].move;
+    }
+
+    return null;
+  }
+
+  /**
+   * 连接弱棋加分
+   */
+  private scoreSaveWeakGroups(game: GoGame, move: Position, color: StoneColor): number {
+    const board = game.state.board;
+    let score = 0;
+
+    for (const neighbor of game.getNeighbors(move)) {
+      if (board[neighbor.row][neighbor.col] === color) {
+        const ng = game.getGroup(neighbor);
+        if (ng.liberties.size === 2) {
+          score += 40 + ng.stones.length * 5;
+        } else if (ng.liberties.size === 3) {
+          score += 15 + ng.stones.length * 3;
+        } else if (ng.liberties.size <= 4) {
+          score += 5 + ng.stones.length;
+        }
+      }
+    }
+
+    return score;
+  }
+
+  /**
+   * 预防对手紧气威胁（增强版）
+   */
+  private scoreThreatPrevention(game: GoGame, move: Position, color: StoneColor): number {
+    const opponent: StoneColor = color === 'black' ? 'white' : 'black';
+    const board = game.state.board;
+    let score = 0;
+    const checkedGroups = new Set<string>();
+
+    for (const neighbor of game.getNeighbors(move)) {
+      const nColor = board[neighbor.row][neighbor.col];
+      if (nColor === color) {
+        const group = game.getGroup(neighbor);
+        const groupKey = group.stones.map(s => `${s.row},${s.col}`).sort().join('|');
+        if (checkedGroups.has(groupKey)) continue;
+        checkedGroups.add(groupKey);
+
+        if (group.liberties.size <= 3) {
+          for (const libKey of group.liberties) {
+            const [lr, lc] = libKey.split(',').map(Number);
+            if (lr === move.row && lc === move.col) continue;
+
+            const tempGame = game.clone();
+            tempGame.state.board[lr][lc] = opponent;
+            const groupAfter = tempGame.getGroup(group.stones[0]);
+
+            if (groupAfter.liberties.size === 0) {
+              // 如果不补，对手下一步可以直接提掉！
+              score += 35 + group.stones.length * 6;
+            } else if (groupAfter.liberties.size === 1) {
+              // 如果不补，会被打吃
+              score += 20 + group.stones.length * 3;
+            } else if (groupAfter.liberties.size === 2 && opponent === 'black') {
+              // 注意：这里本来是检查对手颜色，应该始终检查
+              score += 8 + group.stones.length;
+            }
           }
         }
       }
-      // 连接是好棋,但不要堆在一起
-      if (friendlyCount === 1) score += 5;
-      else if (friendlyCount === 2) score += 3;
-      else if (friendlyCount > 2) score -= 5;
+    }
 
-      // 3. 位置分数 (入门教学: 角 > 边 > 中腹)
-      const posScore = this.getPositionScore(game, move, moveCount);
-      score += posScore;
+    return score;
+  }
 
-      // 4. 远离危险 (不要往对方棋多的地方凑)
-      let danger = 0;
+  /**
+   * 连接价值
+   */
+  private scoreConnection(game: GoGame, move: Position, color: StoneColor): number {
+    const board = game.state.board;
+    let score = 0;
+    const seenGroups = new Set<string>();
+    let weakConnections = 0;
+    let totalConnections = 0;
+
+    for (const neighbor of game.getNeighbors(move)) {
+      if (board[neighbor.row][neighbor.col] === color) {
+        const group = game.getGroup(neighbor);
+        const key = group.stones.map(s => `${s.row},${s.col}`).sort().join('|');
+        if (seenGroups.has(key)) continue;
+        seenGroups.add(key);
+
+        totalConnections++;
+        if (group.liberties.size <= 3) {
+          weakConnections++;
+          score += 10 + group.stones.length * 2;
+        } else {
+          score += 4;
+        }
+      }
+    }
+
+    // 连接两个不同棋组
+    if (totalConnections >= 2) score += 8;
+
+    // 对角有己方棋，尖的连接
+    const diagonals = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
+    let diagFriendly = 0;
+    for (const [dr, dc] of diagonals) {
+      const r = move.row + dr;
+      const c = move.col + dc;
+      if (r >= 0 && r < game.size && c >= 0 && c < game.size && board[r][c] === color) {
+        diagFriendly++;
+      }
+    }
+    if (diagFriendly >= 2) score += 6;
+    if (diagFriendly >= 1 && weakConnections >= 1) score += 4;
+
+    return score;
+  }
+
+  /**
+   * 形状评估
+   */
+  private scoreShape(game: GoGame, move: Position, color: StoneColor): number {
+    const board = game.state.board;
+    let score = 0;
+    let adjacentFriendly = 0;
+    let adjacentEmpty = 0;
+
+    for (const neighbor of game.getNeighbors(move)) {
+      const c = board[neighbor.row][neighbor.col];
+      if (c === color) adjacentFriendly++;
+      else if (c === null) adjacentEmpty++;
+    }
+
+    // 虎口检测
+    const diagonals = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
+    for (const [dr, dc] of diagonals) {
+      const r1 = move.row + dr;
+      const c1 = move.col + dc;
+      const r2 = move.row + dr;
+      const c2 = move.col;
+      const r3 = move.row;
+      const c3 = move.col + dc;
+
+      if (r1 >= 0 && r1 < game.size && c1 >= 0 && c1 < game.size &&
+          r2 >= 0 && r2 < game.size && c2 >= 0 && c2 < game.size &&
+          r3 >= 0 && r3 < game.size && c3 >= 0 && c3 < game.size) {
+        if (board[r1][c1] === color && board[r2][c2] === color) score += 5;
+        if (board[r1][c1] === color && board[r3][c3] === color) score += 5;
+      }
+    }
+
+    // 愚形惩罚
+    if (adjacentFriendly >= 3) {
+      score -= 10;
+    } else if (adjacentFriendly === 2) {
+      const tempGame = game.clone();
+      tempGame.state.board[move.row][move.col] = color;
+      const myGroup = tempGame.getGroup(move);
+      if (myGroup.liberties.size <= 2) score -= 5;
+    }
+
+    // 舒展形（跳/飞）
+    if (adjacentFriendly <= 1 && adjacentEmpty >= 3) {
+      const tempGame = game.clone();
+      tempGame.state.board[move.row][move.col] = color;
+      const myGroup = tempGame.getGroup(move);
+      if (myGroup.liberties.size >= 4) score += 4;
+    }
+
+    // 拆二、跳的好形
+    if (adjacentFriendly === 0 && adjacentEmpty >= 3) {
+      // 检查跳（隔一格有己方棋）
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          if (dr === 0 && dc === 0) continue;
+          if (Math.abs(dr) + Math.abs(dc) === 2) continue;
+          const r = move.row + dr * 2;
+          const c = move.col + dc * 2;
+          if (r >= 0 && r < game.size && c >= 0 && c < game.size && board[r][c] === color) {
+            score += 3;
+          }
+        }
+      }
+    }
+
+    return score;
+  }
+
+  /**
+   * 做眼空间
+   */
+  private scoreEyeSpace(game: GoGame, move: Position, color: StoneColor): number {
+    const board = game.state.board;
+    let score = 0;
+    let friendlyInRange = 0;
+    let opponentInRange = 0;
+    let emptyInRange = 0;
+
+    for (let dr = -2; dr <= 2; dr++) {
+      for (let dc = -2; dc <= 2; dc++) {
+        if (dr === 0 && dc === 0) continue;
+        const r = move.row + dr;
+        const c = move.col + dc;
+        if (r >= 0 && r < game.size && c >= 0 && c < game.size) {
+          if (board[r][c] === color) friendlyInRange++;
+          else if (board[r][c] !== null) opponentInRange++;
+          else emptyInRange++;
+        }
+      }
+    }
+
+    if (friendlyInRange > opponentInRange * 2 && friendlyInRange >= 3) {
+      score += 5;
+    }
+
+    // 周围空旷，适合扎根
+    if (emptyInRange >= 15 && opponentInRange <= 2) {
+      score += 3;
+    }
+
+    return score;
+  }
+
+  // ============================================================
+  //  战略走棋
+  // ============================================================
+
+  /**
+   * 战略走棋：综合评估，选最优发展点
+   */
+  private findStrategyMove(game: GoGame, validMoves: Position[]): Position | null {
+    const color = game.state.currentPlayer;
+    const board = game.state.board;
+    const size = game.size;
+    const center = { row: Math.floor(size / 2), col: Math.floor(size / 2) };
+
+    const scored = validMoves.map(move => {
+      let score = 0;
+
+      const tempGame = game.clone();
+      tempGame.state.board[move.row][move.col] = color;
+      const myGroup = tempGame.getGroup(move);
+
+      // 安全检查
+      if (myGroup.liberties.size <= 1) return { move, score: -1000 };
+
+      // === 气数基础分 ===
+      score += myGroup.liberties.size * 6;
+
+      // === 靠近十字中心（配合教学，核心加分） ===
+      const dist = Math.abs(move.row - center.row) + Math.abs(move.col - center.col);
+      if (dist <= 1) score += 10;
+      else if (dist <= 2) score += 6;
+      else if (dist <= 3) score += 3;
+
+      // === 边线惩罚（大幅增强） ===
+      if (move.row === 0 || move.row === size - 1 || move.col === 0 || move.col === size - 1) {
+        score -= 40;
+      } else if (move.row === 1 || move.row === size - 2 || move.col === 1 || move.col === size - 2) {
+        score -= 12;
+      }
+
+      // === 连接己方棋 ===
+      let friendlyAdjacent = 0;
+      let opponentAdjacent = 0;
+      let emptyAdjacent = 0;
+      for (const neighbor of game.getNeighbors(move)) {
+        if (board[neighbor.row][neighbor.col] === color) {
+          friendlyAdjacent++;
+        } else if (board[neighbor.row][neighbor.col] === null) {
+          emptyAdjacent++;
+        } else {
+          opponentAdjacent++;
+        }
+      }
+
+      if (friendlyAdjacent === 1) score += 5;
+      else if (friendlyAdjacent === 2) score += 3;
+
+      // === 远离强敌，靠近弱敌 ===
       for (const neighbor of game.getNeighbors(move)) {
         const nColor = board[neighbor.row][neighbor.col];
         if (nColor && nColor !== color) {
           const ng = game.getGroup(neighbor);
-          if (ng.liberties.size <= 2) {
-            danger += 5;
+          if (ng.liberties.size <= 1 && ng.stones.length >= 2) {
+            // 对方快死了，靠近可以收气
+            score += 8;
+          } else if (ng.liberties.size <= 2 && ng.stones.length >= 3) {
+            score -= 10;
+          } else if (ng.liberties.size <= 2) {
+            score -= 4;
           }
         }
       }
-      score -= danger;
 
-      // 5. 随机加分 (让孩子有机会反击)
-      score += (Math.random() - 0.3) * 15;
+      // === 对角线有己方棋加分（形成好形） ===
+      const diagonals = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
+      let diagCount = 0;
+      for (const [dr, dc] of diagonals) {
+        const r = move.row + dr;
+        const c = move.col + dc;
+        if (r >= 0 && r < game.size && c >= 0 && c < game.size && board[r][c] === color) {
+          diagCount++;
+        }
+      }
+      if (diagCount >= 2) score += 5;
+      else if (diagCount >= 1 && friendlyAdjacent >= 1) score += 3;
+
+      // === 周围己方势力 ===
+      let friendlyNearby = 0;
+      for (let dr = -2; dr <= 2; dr++) {
+        for (let dc = -2; dc <= 2; dc++) {
+          if (dr === 0 && dc === 0) continue;
+          const r = move.row + dr;
+          const c = move.col + dc;
+          if (r >= 0 && r < game.size && c >= 0 && c < game.size && board[r][c] === color) {
+            friendlyNearby++;
+          }
+        }
+      }
+      score += Math.min(friendlyNearby, 8) * 1;
+
+      // === 轻量随机（保持一定变化性） ===
+      if (this.level === 'easy') {
+        score += (Math.random() - 0.35) * 8;
+      } else {
+        score += (Math.random() - 0.5) * 5;
+      }
 
       return { move, score };
     });
 
-    // 排序,取最高分
     scored.sort((a, b) => b.score - a.score);
-
-    // 过滤掉分数太低的
     const goodMoves = scored.filter(s => s.score > -100);
+
     if (goodMoves.length > 0) {
-      // 取前3个好棋,随机选一个 (增加变化,给孩子机会)
       const topMoves = goodMoves.slice(0, Math.min(3, goodMoves.length));
       return topMoves[Math.floor(Math.random() * topMoves.length)].move;
     }
 
-    return scored[0].move;
+    return scored.length > 0 ? scored[0].move : null;
   }
 
-  /**
-   * 位置分数
-   * 入门教学: 角部价值高,边也不错,中腹要最后才下
-   */
-  private getPositionScore(game: GoGame, move: Position, moveCount: number): number {
-    const size = game.size;
+  // ============================================================
+  //  安全兜底
+  // ============================================================
 
-    // 远离一二线 (入门基础: 一线没前途)
-    const isLine1 = move.row === 0 || move.row === size - 1 || 
-                   move.col === 0 || move.col === size - 1;
-    const isLine2 = move.row === 1 || move.row === size - 2 || 
-                   move.col === 1 || move.col === size - 2;
-
-    if (isLine1) return -30;
-    if (isLine2) return -10;
-
-    // 角部加分 (入门核心: 先占角)
-    const isCorner = (move.row <= 2 && move.col <= 2) ||
-                     (move.row <= 2 && move.col >= size - 3) ||
-                     (move.row >= size - 3 && move.col <= 2) ||
-                     (move.row >= size - 3 && move.col >= size - 3);
-    
-    if (isCorner) {
-      // 开局占角加分高,中局后降低
-      const cornerBonus = moveCount < 20 ? 15 : 8;
-      return cornerBonus;
-    }
-
-    // 边上加分 (入门: 边比中腹好)
-    const isEdge = move.row <= 3 || move.row >= size - 4 || 
-                   move.col <= 3 || move.col >= size - 4;
-    if (isEdge) {
-      return 5;
-    }
-
-    return 0;
-  }
-
-  /**
-   * 随机选择 (最后手段)
-   * 增加随机性,给孩子更多机会
-   */
-  private getRandomMove(game: GoGame, validMoves: Position[]): Position | null {
+  private getSafeFallback(game: GoGame, validMoves: Position[]): Position | null {
     if (validMoves.length === 0) return null;
-    // 优先选择有气的位置
+
     const color = game.state.currentPlayer;
+    const size = game.size;
+    const center = Math.floor(size / 2);
+
     const withLiberties = validMoves.filter(move => {
       const tempGame = game.clone();
       tempGame.state.board[move.row][move.col] = color;
       const group = tempGame.getGroup(move);
       return group.liberties.size >= 2;
     });
-    
+
     const choices = withLiberties.length > 0 ? withLiberties : validMoves;
-    return choices[Math.floor(Math.random() * choices.length)];
+
+    // 优先内圈 > 二线 > 边
+    const interior = choices.filter(
+      m => m.row > 1 && m.row < size - 2 && m.col > 1 && m.col < size - 2
+    );
+    const secondLine = choices.filter(
+      m => m.row === 1 || m.row === size - 2 || m.col === 1 || m.col === size - 2
+    );
+
+    let finalChoices: Position[];
+    if (interior.length > 0) {
+      finalChoices = interior;
+    } else if (secondLine.length > 0) {
+      finalChoices = secondLine;
+    } else {
+      finalChoices = choices;
+    }
+
+    // 偏向靠近中心
+    finalChoices.sort((a, b) => {
+      const distA = Math.abs(a.row - center) + Math.abs(a.col - center);
+      const distB = Math.abs(b.row - center) + Math.abs(b.col - center);
+      return distA - distB;
+    });
+
+    const topN = Math.min(5, finalChoices.length);
+    return finalChoices[Math.floor(Math.random() * topN)];
   }
+
 }

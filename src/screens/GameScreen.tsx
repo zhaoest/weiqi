@@ -15,7 +15,7 @@ interface GameScreenProps {
 
 export function GameScreen({ mode, boardSize, aiLevel = 'easy', onBack }: GameScreenProps) {
   const gameRef = useRef(new GoGame(boardSize));
-  const aiRef = useRef(new GoAI());
+  const aiRef = useRef(new GoAI(aiLevel));
   const [board, setBoard] = useState(gameRef.current.state.board);
   const [currentPlayer, setCurrentPlayer] = useState(gameRef.current.state.currentPlayer);
   const [captures, setCaptures] = useState(gameRef.current.state.captures);
@@ -26,6 +26,15 @@ export function GameScreen({ mode, boardSize, aiLevel = 'easy', onBack }: GameSc
   const [moveCount, setMoveCount] = useState(0);
   const [showResignModal, setShowResignModal] = useState(false);
   const [showBackModal, setShowBackModal] = useState(false);
+  const isInitialized = useRef(false);
+
+  // PVE模式下预置纽十字
+  if (!isInitialized.current) {
+    isInitialized.current = true;
+    if (mode === 'pve') {
+      gameRef.current.setupCrossForTeaching();
+    }
+  }
 
   // Toast 状态
   const [toastVisible, setToastVisible] = useState(false);
@@ -135,10 +144,14 @@ export function GameScreen({ mode, boardSize, aiLevel = 'easy', onBack }: GameSc
 
   const handleNewGame = useCallback(() => {
     gameRef.current = new GoGame(boardSize);
+    if (mode === 'pve') {
+      gameRef.current.setupCrossForTeaching();
+    }
+    aiRef.current = new GoAI(aiLevel);
     setMoveCount(0);
     setScore(null);
     updateState();
-  }, [boardSize, updateState]);
+  }, [boardSize, aiLevel, mode, updateState]);
 
   const playerLabel = currentPlayer === 'black' ? '黑棋' : '白棋';
   const modeLabel = mode === 'pvp' ? '双人对弈' : '电脑对手';

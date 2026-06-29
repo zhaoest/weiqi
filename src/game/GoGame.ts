@@ -41,6 +41,27 @@ export class GoGame {
     this.state = this.createInitialState();
   }
 
+  /**
+   * 预置扭十字（PVE教学模式）
+   * 2x2 交叉：两黑两白交替
+   *   ● ○
+   *   ○ ●
+   * 孩子执黑，从扭十字局面开始攻防练习
+   */
+  setupCrossForTeaching(): void {
+    const center = Math.floor(this.size / 2);
+    const board = this.state.board;
+
+    // 扭十字四子：两黑两白交叉
+    board[center][center] = 'black';
+    board[center][center + 1] = 'white';
+    board[center + 1][center] = 'white';
+    board[center + 1][center + 1] = 'black';
+
+    this.state.history = [];
+    this.state.currentPlayer = 'black';
+  }
+
   getPositionKey(pos: Position): string {
     return `${pos.row},${pos.col}`;
   }
